@@ -72,6 +72,22 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (nullable UIImage *)imageForEmptyDataSet:(UIScrollView *)scrollView;
 
+/**
+ Asks the data source for the title of the dataset.
+ The dataset uses a fixed font style by default, if no attributes are set. If you want a different font style, return a attributed string.
+ 
+ @param scrollView A scrollView subclass informing the data source.
+ @return An attributed string for the dataset loading title, combining font, text color, text pararaph style, etc.
+ */
+- (nullable NSAttributedString *)titleForLoadingDataSet:(UIScrollView *)scrollView;
+
+/**
+ Asks the data source for the activity indicator color of the dataset that will be presented when loading data.
+ 
+ @param scrollView A scrollView subclass informing the data source.
+ @return An UIColor for the activity indicator of the dataset.
+ */
+- (nullable UIColor *)activityIndicatorColorForLoadingDataSet:(UIScrollView *)scrollView;
 
 /**
  Asks the data source for a tint color of the image dataset. Default is nil.
@@ -215,6 +231,14 @@ NS_ASSUME_NONNULL_BEGIN
  @return YES if the empty dataset is allowed to animate
  */
 - (BOOL)emptyDataSetShouldAnimateImageView:(UIScrollView *)scrollView;
+
+/**
+ Asks the delegate to know if the empty dataset should render the loading content. Default is NO.
+ 
+ @param scrollView A scrollView subclass object informing the delegate.
+ @return YES if the empty dataset should show loading content.
+ */
+- (BOOL)emptyDataSetShouldDisplayLoadingContent:(UIScrollView *)scrollView;
 
 /**
  Tells the delegate that the empty dataset view was tapped.

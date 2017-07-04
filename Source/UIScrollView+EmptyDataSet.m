@@ -31,6 +31,7 @@
 @property (nonatomic, readonly) UILabel *titleLabel;
 @property (nonatomic, readonly) UILabel *detailLabel;
 @property (nonatomic, readonly) UIImageView *imageView;
+@property (nonatomic, strong) UIActivityIndicatorView *activityView;
 @property (nonatomic, readonly) UIButton *button;
 @property (nonatomic, strong) UIView *customView;
 @property (nonatomic, strong) UITapGestureRecognizer *tapGesture;
@@ -185,12 +186,32 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
     return nil;
 }
 
+- (NSAttributedString *)dzn_titleLoadingLabelString
+{
+    if (self.emptyDataSetSource && [self.emptyDataSetSource respondsToSelector:@selector(titleForLoadingDataSet:)]) {
+        NSAttributedString *string = [self.emptyDataSetSource titleForLoadingDataSet:self];
+        if (string) NSAssert([string isKindOfClass:[NSAttributedString class]], @"You must return a valid NSAttributedString object for -titleForLoadingDataSet:");
+        return string;
+    }
+    return nil;
+}
+
 - (UIImage *)dzn_image
 {
     if (self.emptyDataSetSource && [self.emptyDataSetSource respondsToSelector:@selector(imageForEmptyDataSet:)]) {
         UIImage *image = [self.emptyDataSetSource imageForEmptyDataSet:self];
         if (image) NSAssert([image isKindOfClass:[UIImage class]], @"You must return a valid UIImage object for -imageForEmptyDataSet:");
         return image;
+    }
+    return nil;
+}
+
+- (UIColor *)dzn_activity_view_color
+{
+    if (self.emptyDataSetSource && [self.emptyDataSetSource respondsToSelector:@selector(activityIndicatorColorForLoadingDataSet:)]) {
+        UIColor *color = [self.emptyDataSetSource activityIndicatorColorForLoadingDataSet:self];
+        if (color) NSAssert([color isKindOfClass:[UIColor class]], @"You must return a valid UIColor object for -activityIndicatorColorForLoadingDataSet:");
+        return color;
     }
     return nil;
 }
@@ -299,6 +320,14 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
         return [self.emptyDataSetDelegate emptyDataSetShouldDisplay:self];
     }
     return YES;
+}
+
+- (BOOL)dzn_shouldDisplayLoadingContent
+{
+    if (self.emptyDataSetDelegate && [self.emptyDataSetDelegate respondsToSelector:@selector(emptyDataSetShouldDisplayLoadingContent:)]) {
+        return [self.emptyDataSetDelegate emptyDataSetShouldDisplayLoadingContent:self];
+    }
+    return NO;
 }
 
 - (BOOL)dzn_shouldBeForcedToDisplay
@@ -452,6 +481,8 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
         view.fadeInOnDisplay = [self dzn_shouldFadeIn];
         
         if (!view.superview) {
+            // Stop animating activity view if it is not being displayed
+            [view.activityView stopAnimating];
             // Send the view all the way to the back, in case a header and/or footer is present, as well as for sectionHeaders or any other content
             if (([self isKindOfClass:[UITableView class]] || [self isKindOfClass:[UICollectionView class]]) && self.subviews.count > 1) {
                 [self insertSubview:view atIndex:0];
@@ -471,9 +502,26 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
             view.customView = customView;
         }
         else {
+            NSAttributedString *titleLabelString = nil;
+            NSAttributedString *detailLabelString = nil;
+            
+            BOOL shouldDisplayLoadingContent = [self dzn_shouldDisplayLoadingContent];
+            // Tag is used to store BOOL indicating if this view should be visible
+            view.activityView.tag = @(shouldDisplayLoadingContent).integerValue;
+            
             // Get the data from the data source
-            NSAttributedString *titleLabelString = [self dzn_titleLabelString];
-            NSAttributedString *detailLabelString = [self dzn_detailLabelString];
+            if (shouldDisplayLoadingContent)
+            {
+                UIColor *activityColor = [self dzn_activity_view_color];
+                if (activityColor) {
+                    view.activityView.color = activityColor;
+                }
+                titleLabelString = [self dzn_titleLoadingLabelString];
+            }
+            else {
+                titleLabelString = [self dzn_titleLabelString];
+                detailLabelString = [self dzn_detailLabelString];
+            }
             
             UIImage *buttonImage = [self dzn_buttonImageForState:UIControlStateNormal];
             NSAttributedString *buttonTitle = [self dzn_buttonTitleForState:UIControlStateNormal];
@@ -551,6 +599,9 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
         else if ([self.emptyDataSetView.imageView.layer animationForKey:kEmptyImageViewAnimationKey]) {
             [self.emptyDataSetView.imageView.layer removeAnimationForKey:kEmptyImageViewAnimationKey];
         }
+        
+        // Start animating activity indicator
+        [view.activityView startAnimating];
         
         // Notifies that the empty dataset view did appear
         [self dzn_didAppear];
@@ -782,6 +833,17 @@ Class dzn_baseClassToSwizzleForTarget(id target)
     return _imageView;
 }
 
+- (UIActivityIndicatorView *)activityView
+{
+    if (!_activityView) {
+        _activityView = [UIActivityIndicatorView new];
+        _activityView.translatesAutoresizingMaskIntoConstraints = NO;
+        _activityView.activityIndicatorViewStyle = UIActivityIndicatorViewStyleGray;
+        _activityView.hidesWhenStopped = YES;
+    }
+    return _activityView;
+}
+
 - (UILabel *)titleLabel
 {
     if (!_titleLabel)
@@ -907,6 +969,7 @@ Class dzn_baseClassToSwizzleForTarget(id target)
     _titleLabel = nil;
     _detailLabel = nil;
     _imageView = nil;
+    _activityView = nil;
     _button = nil;
     _customView = nil;
     
@@ -983,6 +1046,20 @@ Class dzn_baseClassToSwizzleForTarget(id target)
         else {
             [_detailLabel removeFromSuperview];
             _detailLabel = nil;
+        }
+        
+        // Assign the activity view's horizontal constraints
+        if ([@(_activityView.tag) boolValue]) {
+            [_contentView addSubview:_activityView];
+            
+            [subviewStrings addObject:@"activityView"];
+            views[[subviewStrings lastObject]] = _activityView;
+            
+            [self.contentView addConstraint:[self.contentView equallyRelatedConstraintWithView:_activityView attribute:NSLayoutAttributeCenterX]];
+        }// or removes from its superview
+        else {
+            [_activityView removeFromSuperview];
+            _activityView = nil;
         }
         
         // Assign the button's horizontal constraints
